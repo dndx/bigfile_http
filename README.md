@@ -9,7 +9,7 @@ This server does nothing but serves 1GB files through `HTTP 1.1` protocol. It ge
 
 Compiling
 =========
-**Note: Since this program is using `epoll`, it will only compile under Linux. **
+**Note: Since this program is using `epoll`, it will only compile under Linux.**
 
 	$ gcc -o bigfile -Wall -std=gnu11 bigfile.c
 	
