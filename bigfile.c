@@ -1,3 +1,27 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014 Datong Sun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -14,16 +38,21 @@
 #include <assert.h>
 #include <signal.h>
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 4096 // PAGESIZE
 
 typedef struct {
     int fd;
     int header_sent;
 } client_ctx;
 
-int main(void)
+int main(int argc, char *argv[])
 {
-    close(STDIN_FILENO);
+    if (argc != 2)
+    {
+        fprintf(stderr, "Usage: ./bigfile port\nExample: ./bigfile 8888\n");
+        return EXIT_SUCCESS;
+    }
+    close(STDIN_FILENO); // stdin is not needed
     struct sigaction ignore_sig = {
         .sa_handler = SIG_IGN
     };
@@ -55,13 +84,13 @@ int main(void)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
 
-    if (getaddrinfo(NULL, "8888", &hints, &res) != 0)
+    if (getaddrinfo(NULL, argv[1], &hints, &res) != 0)
     {
         fprintf(stderr, "getaddrinfo");
         return EXIT_FAILURE;
     }
 
-    if(bind(listen_fd, res->ai_addr, res->ai_addrlen) == -1)
+    if (bind(listen_fd, res->ai_addr, res->ai_addrlen) == -1)
     {
         perror("bind failed");
         return EXIT_FAILURE;
@@ -69,7 +98,7 @@ int main(void)
 
     freeaddrinfo(res);
 
-    if(-1 == listen(listen_fd, 10))
+    if (-1 == listen(listen_fd, 10))
     {
         perror("listen failed");
         return EXIT_FAILURE;
@@ -90,12 +119,12 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    for(;;)
+    for (;;)
     {
-        struct epoll_event events[10];
+        struct epoll_event events[10]; // this should be enough since we are primarily doing benchmarking
         int n = epoll_wait(epoll_fd, events, sizeof(events) / sizeof(events[0]), -1);
         assert(n);
-        if (n <= 0) // should never timeout
+        if (n <= 0) // timeout would never happen
         {
             perror("epoll_wait");
             return EXIT_FAILURE;
@@ -103,7 +132,7 @@ int main(void)
 
         for (int i = 0; i < n; i++)
         {
-            if (events[i].data.fd == listen_fd) // listen fd
+            if (events[i].data.fd == listen_fd) // listen fd, sccept new connections
             {
                 int client_fd;
                 while ((client_fd = accept4(listen_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC)) > 0) {
@@ -135,6 +164,15 @@ int main(void)
             }
             else // client fd
             {
+                /*
+                 * We do not care about read event at all. I am not trying to implement a HTTP server and
+                 * we just assume all requests are valid. This serves the perpose of network
+                 * benchmarking and is totally fine. 
+                 *
+                 * We also do not count how many bytes of data we already sent. Since we provided
+                 * the Content-Length header, client will be able to determine when should the
+                 * connection be closed. We are always doing passive close. 
+                 */
                 const char send_buf[BUFFER_SIZE] = {0};
                 int n;
                 client_ctx *ctx = events[i].data.ptr;
@@ -146,13 +184,13 @@ int main(void)
 
 #define RESPONSE "HTTP/1.1 200 OK\r\n" \
 "Date: Mon, 23 May 2005 22:38:34 GMT\r\n" \
-"ZeroServer/0.0.1\r\n" \
+"Bigfile Server (https://github.com/dndx/bigfile_http) / 0.0.1\r\n" \
 "Content-Length: 1073741824\r\n" \
 "Connection: close\r\n\r\n"
 
                 if (!ctx->header_sent)
                 {
-                    n = write(ctx->fd, RESPONSE, sizeof(RESPONSE) - 1); // no null terminator plz
+                    n = write(ctx->fd, RESPONSE, sizeof(RESPONSE) - 1); // we have to exclude the NULL terminator here
                     if (n != sizeof(RESPONSE) - 1)
                     {
                         fprintf(stderr, "reader partially sent");
@@ -187,11 +225,12 @@ close:
                             return EXIT_FAILURE;
                         }
                     }
-                } while (n == BUFFER_SIZE);
+                } while (n == BUFFER_SIZE); // if n is shorter than BUFFER_SIZE, we know we completely filled the kernel send buffer
             }
         }
     }
 
+    // this part is not reachable, but still added those close() just in case
     close(listen_fd);
     close(epoll_fd);
     return EXIT_SUCCESS;  
