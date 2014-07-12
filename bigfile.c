@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
             {
                 /*
                  * We do not care about read event at all. I am not trying to implement a HTTP server and
-                 * we just assume all requests are valid. This serves the perpose of network
+                 * we just assume all requests are valid. This serves the purpose of network
                  * benchmarking and is totally fine. 
                  *
                  * We also do not count how many bytes of data we already sent. Since we provided
