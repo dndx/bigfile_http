@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
     }
 
     struct epoll_event ev = {0};
-    ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
+    ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = listen_fd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listen_fd, &ev) < 0)
     {
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
 
         for (int i = 0; i < n; i++)
         {
-            if (events[i].data.fd == listen_fd) // listen fd, sccept new connections
+            if (events[i].data.fd == listen_fd) // listen fd, accept new connections
             {
                 int client_fd;
                 while ((client_fd = accept4(listen_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC)) > 0) {
